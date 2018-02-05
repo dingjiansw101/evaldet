@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import shapely
 import shapely.geometry as shgeo
 from shapely.geometry import Polygon, MultiPoint
-
+import polyiou
 
 def polygon_from_list(line):
     """
@@ -38,8 +38,8 @@ def polygon_iou(list1, list2):
     else:
         try:
             inter_area = poly1.intersection(poly2).area
-            union_area = poly1.area + poly2.area - inter_area
-            #union_area = MultiPoint(union_poly).convex_hull.area
+            # union_area = poly1.area + poly2.area - inter_area
+            union_area = MultiPoint(union_poly).convex_hull.area
             if union_area == 0:
                 return 0
             iou = float(inter_area) / union_area
@@ -240,7 +240,9 @@ def voc_eval(detpath,
                     #                          (bb[4], bb[5]),
                     #                          (bb[6], bb[7])])
                     # overlap = calc_iou(gtpoly, detpoly)
-                    overlap = polygon_iou(BBGT[index], bb)
+
+                    overlap = polyiou.iou_poly(polyiou.VectorDouble(BBGT[index]), polyiou.VectorDouble(bb))
+                    # overlap = polygon_iou(BBGT[index], bb)
                     overlaps.append(overlap)
                 return overlaps
             overlaps = calcoverlaps(BBGT, bb)
