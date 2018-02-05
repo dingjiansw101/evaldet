@@ -28,7 +28,32 @@ def parse_rec(filename):
         objects.append(obj_struct)
 
     return objects
-
+def parse_gt(filename):
+    objects = []
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+        splitlines = [x.strip().split(' ')  for x in lines]
+        for splitline in splitlines:
+            object_struct = {}
+            object_struct['name'] = splitline[8]
+            if (len(splitline) == 9):
+                object_struct['difficult'] = 0
+            elif (len(splitline) == 10):
+                object_struct['difficult'] = int(splitline[9])
+            # object_struct['difficult'] = 0
+            object_struct['bbox'] = [int(float(splitline[0])),
+                                         int(float(splitline[1])),
+                                         int(float(splitline[4])),
+                                         int(float(splitline[5]))]
+            w = int(float(splitline[4])) - int(float(splitline[0]))
+            h = int(float(splitline[5])) - int(float(splitline[1]))
+            object_struct['area'] = w * h
+            #print('area:', object_struct['area'])
+            # if object_struct['area'] < (15 * 15):
+            #     #print('area:', object_struct['area'])
+            #     object_struct['difficult'] = 1
+            objects.append(object_struct)
+    return objects
 def voc_ap(rec, prec, use_07_metric=False):
     """ ap = voc_ap(rec, prec, [use_07_metric])
     Compute VOC AP given precision and recall.
@@ -100,16 +125,16 @@ def voc_eval(detpath,
     with open(imagesetfile, 'r') as f:
         lines = f.readlines()
     imagenames = [x.strip() for x in lines]
-    print('imagenames: ', imagenames)
+    #print('imagenames: ', imagenames)
     #if not os.path.isfile(cachefile):
         # load annots
     recs = {}
     for i, imagename in enumerate(imagenames):
-        print('parse_files name: ', annopath.format(imagename))
-        recs[imagename] = parse_rec(annopath.format(imagename))
-        if i % 100 == 0:
-            print ('Reading annotation for {:d}/{:d}'.format(
-                i + 1, len(imagenames)) )
+        #print('parse_files name: ', annopath.format(imagename))
+        recs[imagename] = parse_gt(annopath.format(imagename))
+        #if i % 100 == 0:
+         #   print ('Reading annotation for {:d}/{:d}'.format(
+          #      i + 1, len(imagenames)) )
         # save
         #print ('Saving cached annotations to {:s}'.format(cachefile))
         #with open(cachefile, 'w') as f:
@@ -140,12 +165,21 @@ def voc_eval(detpath,
     splitlines = [x.strip().split(' ') for x in lines]
     image_ids = [x[0] for x in splitlines]
     confidence = np.array([float(x[1]) for x in splitlines])
+
+    #print('check confidence: ', confidence)
+
     BB = np.array([[float(z) for z in x[2:]] for x in splitlines])
+
     # sort by confidence
     sorted_ind = np.argsort(-confidence)
     sorted_scores = np.sort(-confidence)
+
+    #print('check sorted_scores: ', sorted_scores)
+    #print('check sorted_ind: ', sorted_ind)
     BB = BB[sorted_ind, :]
     image_ids = [image_ids[x] for x in sorted_ind]
+    #print('check imge_ids: ', image_ids)
+    #print('imge_ids len:', len(image_ids))
     # go down dets and mark TPs and FPs
     nd = len(image_ids)
     tp = np.zeros(nd)
@@ -174,6 +208,7 @@ def voc_eval(detpath,
 
             overlaps = inters / uni
             ovmax = np.max(overlaps)
+            ## if there exist 2
             jmax = np.argmax(overlaps)
 
         if ovmax > ovthresh:
@@ -183,12 +218,23 @@ def voc_eval(detpath,
                     R['det'][jmax] = 1
                 else:
                     fp[d] = 1.
+                   # print('filename:', image_ids[d])
         else:
             fp[d] = 1.
 
     # compute precision recall
+
+    print('check fp:', fp)
+    print('check tp', tp)
+
+
+    print('npos num:', npos)
     fp = np.cumsum(fp)
     tp = np.cumsum(tp)
+
+    #print('fp num:', fp)
+    #print('tp num:', tp)
+    #print('np num:', np)
     rec = tp / float(npos)
     # avoid divide by zero in case the first detection matches a difficult
     # ground truth
@@ -196,15 +242,40 @@ def voc_eval(detpath,
     ap = voc_ap(rec, prec, use_07_metric)
 
     return rec, prec, ap
+
+# datamap2 = {'0A': 'passenger plane', '0B': 'fighter aeroplane', '0C': 'radar',
+#            '1': 'baseball diamond', '2': 'bridge', '3': 'ground track', '4A': 'car', '4B': 'trunck',
+#            '4C': 'bus', '5A': 'ship','5B': 'big ship', '6': 'tennis court', '7': 'baseketball court',
+#            '8': 'storage tank', '9': 'soccer ball field', '10': 'turntable',
+#            '11': 'harbor', '12': 'electric pole', '13': 'parking lot', '14': 'swimming pool', '15': 'lake',
+#            '16': 'helicopter', '17': 'airport', '18A': 'viaduct'}
+datamap2 = {'0A': 'plane', '0B': 'fighter aeroplane', '0C': 'radar',
+           '1': 'baseball-diamond', '2': 'bridge', '3': 'ground-track', '4A': 'car', '4B': 'trunck',
+           '4C': 'bus', '5A': 'ship','5B': 'big ship', '6': 'tennis court', '7': 'baseketball-court',
+           '8': 'storage-tank', '9': 'soccer-ball-field', '10': 'turntable',
+           '11': 'harbor', '12': 'electric-pole', '13': 'parking-lot', '14': 'swimming-pool', '15': 'lake',
+           '16': 'helicopter', '17': 'airport', '18A': 'viaduct'}
 def main():
-    detpath = r'G:\voc_eval\Main\comp4_det_test_{:s}.txt'
-    annopath = r'G:\Data\pascaldata\VOCtest_06-Nov-2007\VOCdevkit\VOC2007\Annotations\{:s}.xml'
-    imagesetfile = r'G:\Data\pascaldata\VOCtest_06-Nov-2007\VOCdevkit\VOC2007\ImageSets\Main\test.txt'
-    #outpath = r'G:\voc_eval\GFMain'
-    classnames = ['aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car', 'cat', 'chair', 'cow', 'diningtable',
-                  'dog', 'horse', 'motorbike', 'person', 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor']
+    detpath = r'E:\documentation\OneDrive\documentation\DotaEvaluation\evluation_task2\evluation_task2\faster-rcnn-nms_0.3_task2\nms_0.3_task\Task2_{:s}.txt'
+    #annopath = r'G:\voc_eval\GFformatPascal\{:s}.txt'
+    annopath = r'I:\dota\testset\ReclabelTxt-utf-8\{:s}.txt'
+    imagesetfile = r'I:\dota\testset\testset.txt'
+    #classnames = ['plane', 'bridge', 'storage', 'ship', 'harbor']
+    # classnames = ['0A', '0B', '0C', '1', '2', '3', '4A', '4B', '4C', '5A', '5B', '6', '7', '8', '9', '10'
+    #    , '11', '12', '13', '14', '15', '16', '18A']
+    classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
+                'basketball-court', 'storage-tank',  'soccer-ball-field', 'roundabout', 'harbor', 'swimming-pool', 'helicopter']
+    # classnames = ['small-vehicle']
+    # classnames = ['baseball-diamond', 'bridge', 'ground-track-field',
+    #            'baseketball-court', 'soccer-ball-field', 'harbor', 'helicopter']
+#    classnames = ['plane', 'small-vehicle']
+    #classnames = ['plane', 'small-vehicle']
+    #classnames = ['0A']
+    #classes = [datamap2[x] for x in classnames]
+    classaps = []
     map = 0
     for classname in classnames:
+        print('classname:', classname)
         rec, prec, ap = voc_eval(detpath,
              annopath,
              imagesetfile,
@@ -212,12 +283,20 @@ def main():
              ovthresh=0.5,
              use_07_metric=True)
         map = map + ap
-        print('rec: ', rec, 'prec: ', prec, 'ap: ', ap)
+        #print('rec: ', rec, 'prec: ', prec, 'ap: ', ap)
+        print('ap: ', ap)
+        classaps.append(ap)
         plt.figure(figsize=(8,4))
-        plt.plot(prec,rec)
+        plt.xlabel('recall')
+        plt.ylabel('precision')
+        plt.plot(rec, prec)
         plt.show()
-    map = map/20
+    map = map/len(classnames)
     print('map:', map)
+    #classout = ' && '.join(classes)
+    #print('classout: ', classout)
+    classaps = 100*np.array(classaps)
+    print('classaps: ', classaps)
+    #print('aps:', ' '.join(map(str, classaps)))
 if __name__ == '__main__':
     main()
-

@@ -9,6 +9,10 @@ import os
 #import cPickle
 import numpy as np
 import matplotlib.pyplot as plt
+import codecs
+
+fp_dir = r'E:\yanshen\dataset2\trainval\results\fp.txt'
+f_fp = codecs.open(fp_dir, 'w', 'utf_16')
 
 def parse_rec(filename):
     """ Parse a PASCAL VOC xml file """
@@ -28,7 +32,27 @@ def parse_rec(filename):
         objects.append(obj_struct)
 
     return objects
-
+def parse_gt(filename):
+    objects = []
+    with  open(filename, 'r', encoding='utf_16') as f:
+        while True:
+            line = f.readline()
+            if line:
+                splitlines = line.strip().split(' ')
+                object_struct = {}
+                object_struct['name'] = splitlines[8]
+                if (len(splitlines) == 9):
+                    object_struct['difficult'] = 0
+                elif (len(splitlines) == 10):
+                    object_struct['difficult'] = 1
+                object_struct['bbox'] = [int(splitlines[0]),
+                                         int(splitlines[1]),
+                                         int(splitlines[4]),
+                                         int(splitlines[5])]
+                objects.append(object_struct)
+            else:
+                break
+    return objects
 def voc_ap(rec, prec, use_07_metric=False):
     """ ap = voc_ap(rec, prec, [use_07_metric])
     Compute VOC AP given precision and recall.
@@ -106,7 +130,7 @@ def voc_eval(detpath,
     recs = {}
     for i, imagename in enumerate(imagenames):
         print('parse_files name: ', annopath.format(imagename))
-        recs[imagename] = parse_rec(annopath.format(imagename))
+        recs[imagename] = parse_gt(annopath.format(imagename))
         if i % 100 == 0:
             print ('Reading annotation for {:d}/{:d}'.format(
                 i + 1, len(imagenames)) )
@@ -132,20 +156,30 @@ def voc_eval(detpath,
                                  'difficult': difficult,
                                  'det': det}
 
+    print('npos:', npos)
     # read dets
     detfile = detpath.format(classname)
+    print('detfile:', detfile)
     with open(detfile, 'r') as f:
         lines = f.readlines()
 
     splitlines = [x.strip().split(' ') for x in lines]
     image_ids = [x[0] for x in splitlines]
     confidence = np.array([float(x[1]) for x in splitlines])
+
+    print('check confidence: ', confidence)
+
     BB = np.array([[float(z) for z in x[2:]] for x in splitlines])
+
     # sort by confidence
     sorted_ind = np.argsort(-confidence)
     sorted_scores = np.sort(-confidence)
+
+    print('check sorted_scores: ', sorted_scores)
+    print('check sorted_ind: ', sorted_ind)
     BB = BB[sorted_ind, :]
     image_ids = [image_ids[x] for x in sorted_ind]
+    print('check imge_ids: ', image_ids)
     # go down dets and mark TPs and FPs
     nd = len(image_ids)
     tp = np.zeros(nd)
@@ -155,6 +189,8 @@ def voc_eval(detpath,
         bb = BB[d, :].astype(float)
         ovmax = -np.inf
         BBGT = R['bbox'].astype(float)
+
+        xmin, ymin, xmax, ymax = bb[0], bb[1], bb[2], bb[3]
 
         if BBGT.size > 0:
             # compute overlaps
@@ -176,17 +212,33 @@ def voc_eval(detpath,
             ovmax = np.max(overlaps)
             jmax = np.argmax(overlaps)
 
+
         if ovmax > ovthresh:
             if not R['difficult'][jmax]:
                 if not R['det'][jmax]:
                     tp[d] = 1.
                     R['det'][jmax] = 1
                 else:
-                    fp[d] = 1.
+                    fp[d] = 1
+                    outbox = [xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax, 'fp']
+                    for index, item in enumerate(outbox):
+                        outbox[index] = str(item)
+                    outline = ' '.join(outbox)
+                    f_fp.write(outline + '\n')
         else:
             fp[d] = 1.
+            outbox = [xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax, 'fp']
+            for index, item in enumerate(outbox):
+                outbox[index] = str(item)
+            outline = ' '.join(outbox)
+            f_fp.write(outline + '\n')
 
     # compute precision recall
+
+    print('check fp:', fp)
+    print('check tp', tp)
+
+
     fp = np.cumsum(fp)
     tp = np.cumsum(tp)
     rec = tp / float(npos)
@@ -197,12 +249,13 @@ def voc_eval(detpath,
 
     return rec, prec, ap
 def main():
-    detpath = r'G:\voc_eval\Main\comp4_det_test_{:s}.txt'
-    annopath = r'G:\Data\pascaldata\VOCtest_06-Nov-2007\VOCdevkit\VOC2007\Annotations\{:s}.xml'
-    imagesetfile = r'G:\Data\pascaldata\VOCtest_06-Nov-2007\VOCdevkit\VOC2007\ImageSets\Main\test.txt'
-    #outpath = r'G:\voc_eval\GFMain'
-    classnames = ['aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car', 'cat', 'chair', 'cow', 'diningtable',
-                  'dog', 'horse', 'motorbike', 'person', 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor']
+    detpath = r'E:\yanshen\dataset2\trainval\results\comp4_det_test_{:s}.txt'
+    ##annopath = r'G:\voc_eval\GFformatPascal\{:s}.txt'
+    annopath = r'E:\yanshen\dataset2\trainval\labelTxt-backup1\labelTxt\{:s}.txt'
+    #imagesetfile = r'G:\Data\pascaldata\VOCtest_06-Nov-2007\VOCdevkit\VOC2007\ImageSets\Main\test.txt'
+    imagesetfile = r'E:\yanshen\dataset2\trainval\ImageSets\test.txt'
+    #classnames = ['plane', 'bridge', 'storage', 'ship', 'harbor']
+    classnames = ['aeroplane']
     map = 0
     for classname in classnames:
         rec, prec, ap = voc_eval(detpath,
@@ -214,10 +267,12 @@ def main():
         map = map + ap
         print('rec: ', rec, 'prec: ', prec, 'ap: ', ap)
         plt.figure(figsize=(8,4))
-        plt.plot(prec,rec)
+        plt.xlabel('recall')
+        plt.ylabel('precision')
+        plt.plot(rec, prec)
         plt.show()
-    map = map/20
+    map = map/len(classnames)
     print('map:', map)
+
 if __name__ == '__main__':
     main()
-

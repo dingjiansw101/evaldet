@@ -28,7 +28,34 @@ def parse_rec(filename):
         objects.append(obj_struct)
 
     return objects
-
+def parse_gt(filename):
+    objects = []
+    with  open(filename, 'r', encoding='utf_16') as f:
+        while True:
+            line = f.readline()
+            if line:
+                splitlines = line.strip().split(' ')
+                object_struct = {}
+                object_struct['name'] = splitlines[8]
+                if (len(splitlines) == 9):
+                    object_struct['difficult'] = 0
+                elif (len(splitlines) == 10):
+                    object_struct['difficult'] = 1
+                object_struct['bbox'] = [int(float(splitlines[0])),
+                                         int(float(splitlines[1])),
+                                         int(float(splitlines[4])),
+                                         int(float(splitlines[5]))]
+                w = int(float(splitlines[4])) - int(float(splitlines[0]))
+                h = int(float(splitlines[5])) - int(float(splitlines[1]))
+                object_struct['area'] = w * h
+                #print('area:', object_struct['area'])
+                if object_struct['area'] < (10 * 10):
+                    #print('area:', object_struct['area'])
+                    object_struct['difficult'] = 1
+                objects.append(object_struct)
+            else:
+                break
+    return objects
 def voc_ap(rec, prec, use_07_metric=False):
     """ ap = voc_ap(rec, prec, [use_07_metric])
     Compute VOC AP given precision and recall.
@@ -61,7 +88,30 @@ def voc_ap(rec, prec, use_07_metric=False):
         # and sum (\Delta recall) * prec
         ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
     return ap
+def parse_ucas_gt(filename):
+    objects = []
+    with  open(filename, 'r') as f:
 
+        #print('filename:', filename)
+        lines = f.readlines()
+        splitlines = [x.strip().split() for x in lines]
+        basename = os.path.basename(os.path.splitext(filename)[0])
+        #print('basename:', basename)
+        numer = int(basename[1:])
+        if (numer <= 510):
+            classname = 'small-vehicle'
+        else:
+            classname = 'plane'
+
+        for splitline in splitlines:
+            object_struct = {}
+            object_struct['name'] = classname
+            #print('splitline: ', splitline)
+            x, y, w, h = float(splitline[9]), float(splitline[10]), float(splitline[11]), float(splitline[12])
+            object_struct['bbox'] = [x, y, x + w, y + h]
+            object_struct['difficult'] = 0
+            objects.append(object_struct)
+    return objects
 def voc_eval(detpath,
              annopath,
              imagesetfile,
@@ -100,16 +150,17 @@ def voc_eval(detpath,
     with open(imagesetfile, 'r') as f:
         lines = f.readlines()
     imagenames = [x.strip() for x in lines]
-    print('imagenames: ', imagenames)
+    #print('imagenames: ', imagenames)
     #if not os.path.isfile(cachefile):
         # load annots
     recs = {}
     for i, imagename in enumerate(imagenames):
-        print('parse_files name: ', annopath.format(imagename))
-        recs[imagename] = parse_rec(annopath.format(imagename))
-        if i % 100 == 0:
-            print ('Reading annotation for {:d}/{:d}'.format(
-                i + 1, len(imagenames)) )
+        #print('parse_files name: ', annopath.format(imagename))
+        #recs[imagename] = parse_gt(annopath.format(imagename))
+        recs[imagename] = parse_ucas_gt(annopath.format(imagename))
+        #if i % 100 == 0:
+         #   print ('Reading annotation for {:d}/{:d}'.format(
+          #      i + 1, len(imagenames)) )
         # save
         #print ('Saving cached annotations to {:s}'.format(cachefile))
         #with open(cachefile, 'w') as f:
@@ -140,12 +191,21 @@ def voc_eval(detpath,
     splitlines = [x.strip().split(' ') for x in lines]
     image_ids = [x[0] for x in splitlines]
     confidence = np.array([float(x[1]) for x in splitlines])
+
+    #print('check confidence: ', confidence)
+
     BB = np.array([[float(z) for z in x[2:]] for x in splitlines])
+
     # sort by confidence
     sorted_ind = np.argsort(-confidence)
     sorted_scores = np.sort(-confidence)
+
+    #print('check sorted_scores: ', sorted_scores)
+    #print('check sorted_ind: ', sorted_ind)
     BB = BB[sorted_ind, :]
     image_ids = [image_ids[x] for x in sorted_ind]
+    #print('check imge_ids: ', image_ids)
+    #print('imge_ids len:', len(image_ids))
     # go down dets and mark TPs and FPs
     nd = len(image_ids)
     tp = np.zeros(nd)
@@ -187,8 +247,18 @@ def voc_eval(detpath,
             fp[d] = 1.
 
     # compute precision recall
+
+    #print('check fp:', fp)
+    #print('check tp', tp)
+
+
+    print('npos num:', npos)
     fp = np.cumsum(fp)
     tp = np.cumsum(tp)
+
+    #print('fp num:', fp)
+    #print('tp num:', tp)
+    #print('np num:', np)
     rec = tp / float(npos)
     # avoid divide by zero in case the first detection matches a difficult
     # ground truth
@@ -196,15 +266,26 @@ def voc_eval(detpath,
     ap = voc_ap(rec, prec, use_07_metric)
 
     return rec, prec, ap
+
 def main():
-    detpath = r'G:\voc_eval\Main\comp4_det_test_{:s}.txt'
-    annopath = r'G:\Data\pascaldata\VOCtest_06-Nov-2007\VOCdevkit\VOC2007\Annotations\{:s}.xml'
-    imagesetfile = r'G:\Data\pascaldata\VOCtest_06-Nov-2007\VOCdevkit\VOC2007\ImageSets\Main\test.txt'
-    #outpath = r'G:\voc_eval\GFMain'
-    classnames = ['aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car', 'cat', 'chair', 'cow', 'diningtable',
-                  'dog', 'horse', 'motorbike', 'person', 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor']
+    detpath = r'E:\downloaddataset\CarPlane\results\bod-valid-car-480000-nms\comp4_det_test_{:s}.txt'
+    #annopath = r'G:\voc_eval\GFformatPascal\{:s}.txt'
+    annopath = r'E:\downloaddataset\CarPlane\label2\{:s}.txt'
+    imagesetfile = r'E:\downloaddataset\CarPlane\test.txt'
+    #classnames = ['plane', 'bridge', 'storage', 'ship', 'harbor']
+    #classnames = ['0A', '0B', '0C', '1', '2', '3', '4A', '4B', '4C', '5A', '5B', '6', '7', '8', '9', '10'
+     #   , '11', '12', '13', '14', '15', '16', '18A']
+    #classnames = ['plane', 'baseball-diamond', 'bridge', 'ground-track-field', 'small-vehicle', 'large-vehicle', 'ship', 'tennis-court',
+     #          'baseketball-court', 'storage-tank',  'soccer-ball-field', 'turntable', 'harbor', 'swimming-pool', 'helicopter']
+
+    classnames = ['plane', 'small-vehicle']
+
+    #classnames = ['0A']
+    #classes = [datamap2[x] for x in classnames]
+    classaps = []
     map = 0
     for classname in classnames:
+        print('classname:', classname)
         rec, prec, ap = voc_eval(detpath,
              annopath,
              imagesetfile,
@@ -212,12 +293,20 @@ def main():
              ovthresh=0.5,
              use_07_metric=True)
         map = map + ap
-        print('rec: ', rec, 'prec: ', prec, 'ap: ', ap)
+        #print('rec: ', rec, 'prec: ', prec, 'ap: ', ap)
+        print('ap: ', ap)
+        classaps.append(ap)
         plt.figure(figsize=(8,4))
-        plt.plot(prec,rec)
+        plt.xlabel('recall')
+        plt.ylabel('precision')
+        plt.plot(rec, prec)
         plt.show()
-    map = map/20
+    map = map/len(classnames)
     print('map:', map)
+    #classout = ' && '.join(classes)
+    #print('classout: ', classout)
+    classaps = 100*np.array(classaps)
+    print('classaps: ', classaps)
+    #print('aps:', ' '.join(map(str, classaps)))
 if __name__ == '__main__':
     main()
-
